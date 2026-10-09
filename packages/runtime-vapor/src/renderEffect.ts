@@ -21,6 +21,7 @@ import { inOnce } from './once'
 import { invokeArrayFns } from '@vue/shared'
 import { isSuspenseEnabled } from './suspense'
 import { isInteropEnabled } from './vdomInteropState'
+import { adoptVdomOwnedEffect } from './vdomSlotOwner'
 
 export class RenderEffect extends ReactiveEffect {
   i: VaporComponentInstance | null
@@ -39,14 +40,9 @@ export class RenderEffect extends ReactiveEffect {
     this.render = render
     const instance = currentInstance as VaporComponentInstance | null
     // a vdom instance rendering vapor content owns the update job at order 0
-    if (
-      isInteropEnabled &&
-      instance &&
-      !instance.vapor &&
-      !instance.effectCount
-    ) {
-      instance.effectCount = 1
-    }
+    const vdomOwner =
+      isInteropEnabled && instance && !instance.vapor ? instance : null
+    if (vdomOwner && !vdomOwner.effectCount) vdomOwner.effectCount = 1
     this.order = instance ? instance.effectCount++ : 0
     if (__DEV__ && !__TEST__ && !this.subs && !isVaporComponent(instance)) {
       warn('renderEffect called without active EffectScope or Vapor instance.')
@@ -68,6 +64,10 @@ export class RenderEffect extends ReactiveEffect {
     // Safe in Vapor because updates are always async via queueJob(), and
     // isUpdating prevents duplicate bu/u hooks on re-entry.
     this.flags |= EffectFlags.ALLOW_RECURSE
+
+    // a registered vdom owner (one that renders vapor slots) re-renders for
+    // the effects it owns; last, so their own fields extend the shared shape
+    if (vdomOwner) adoptVdomOwnedEffect(this, vdomOwner, noLifecycle)
   }
 
   createJob(): SchedulerJob {
