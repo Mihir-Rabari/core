@@ -78,6 +78,7 @@ import type { RootMeta } from './template'
 import { isTransitionEnabled } from '../transition'
 import { isInteropEnabled } from '../vdomInteropState'
 import { inOnce } from '../once'
+import { queueSelectUpdates } from '../renderEffect'
 
 type TargetElement = Element & {
   $root?: boolean | RootMeta
@@ -508,7 +509,11 @@ export function setValue(
       })
       // The running effect may not have seen this selection update yet.
       if (instance.isMounted) {
-        queuePostRenderEffect(update, instance.uid, instance.suspense)
+        if (isInteropEnabled && !instance.vapor) {
+          queuePostRenderEffect(update, instance.uid, instance.suspense)
+        } else {
+          queueSelectUpdates(instance)
+        }
       }
     }
     el.$valueBound = true
